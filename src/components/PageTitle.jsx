@@ -7,19 +7,19 @@ function PageTitle({ view }) {
       title = 'Products';
       break;
     case 'addProduct':
-      title = 'Add Product';
+      title = 'Nuevo Producto';
       break;
     case 'batches':
-      title = 'Batches';
+      title = 'Lotes';
       break;
     case 'addBatch':
-      title = 'Add Batch';
+      title = 'Agregar Lote';
       break;
     case 'movements':
-      title = 'Stock Movements';
+      title = 'Movimientos';
       break;
     case 'inventory':
-      title = 'Inventory';
+      title = 'Inventario';
       break;
     default:
       title = '';
