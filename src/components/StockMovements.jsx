@@ -28,45 +28,65 @@ export default function StockMovements() {
   const [movements, setMovements] = useState([]);
 
   useEffect(() => {
-    loadData();
+  loadData();
+}, []);
+
+useEffect(() => {
+  if (locations.length > 0 && batches.length > 0) {
     loadMovements();
-  }, []);
+  }
+}, [locations, batches]);
 
   const loadData = async () => {
-    const { data: b } = await supabase.from('batches').select('*');
+    const { data: b } = await supabase.from('batches')
+    .select(`
+      id,
+      expiration_date,
+      products (
+        id,
+        name
+      )
+    `);
     const { data: l } = await supabase.from('locations').select('*');
     setBatches(b || []);
     setLocations(l || []);
   };
 
   const loadMovements = async () => {
-    const { data } = await supabase
-      .from('stock_movements')
-      .select(`
-        id,
-        quantity,
-        type,
-        movement_date,
-        location_id,
-        from_location_id,
-        to_location_id,
-        batches (
-          id,
-          expiration_date,
-          products (
-            id,
-            name
-          )
-        ),
-        locations (
-          id,
-          name
-        )
-      `)
-      .order('movement_date', { ascending: false });
+  const { data, error } = await supabase
+    .from('stock_movements')
+    .select(`
+    id,
+    quantity,
+    type,
+    movement_date,
+    location_id,
+    from_location_id,
+    to_location_id,
+    batch_id,
+    batches (
+      id,
+      expiration_date,
+      products (id, name)
+    )
+  `)
+  .order('movement_date', { ascending: false });
 
-    setMovements(data || []);
-  };
+if (error) {
+  console.error("Error loading movements:", error);
+  return;
+}
+
+// Map locations en frontend
+const mapped = data.map((m) => ({
+  ...m,
+  location_name: locations.find((l) => l.id === m.location_id)?.name ?? '—',
+  from_location_name: locations.find((l) => l.id === m.from_location_id)?.name ?? '—',
+  to_location_name: locations.find((l) => l.id === m.to_location_id)?.name ?? '—',
+}));
+
+setMovements(mapped);
+};
 
   const handleSubmit = async () => {
     const insertData = {
@@ -106,7 +126,7 @@ export default function StockMovements() {
         >
           {batches.map((b) => (
             <MenuItem key={b.id} value={b.id}>
-              {b.id}
+              {b.products?.name ?? "Producto desconocido"} - Lote {b.id}
             </MenuItem>
           ))}
         </TextField>
@@ -201,30 +221,28 @@ export default function StockMovements() {
             </TableRow>
           </TableHead>
 
-          <TableBody>
-            {movements.map((m) => (
-              <TableRow key={m.id}>
-                <TableCell>{m.movement_date}</TableCell>
+    <TableBody>
+  {movements.map((m) => (
+    <TableRow key={m.id}>
+      <TableCell>{m.movement_date}</TableCell>
 
-                <TableCell>
-                  {m.batches?.products?.name ?? '—'}
-                  <br />
-                  <small>Lote: {m.batches?.id}</small>
-                </TableCell>
+      <TableCell>
+        <strong>{m.batches?.products?.name ?? "Producto desconocido"}</strong>
+        <br />
+        <small>Lote: {m.batches?.id} — Vence: {m.batches?.expiration_date}</small>
+      </TableCell>
 
-                <TableCell>
-                  {m.type === 'MOVE'
-                    ? `${locations.find((l) => l.id === m.from_location_id)?.name ?? '—'} → ${
-                        locations.find((l) => l.id === m.to_location_id)?.name ?? '—'
-                      }`
-                    : m.locations?.name ?? '—'}
-                </TableCell>
+      <TableCell>
+  {m.type === 'MOVE'
+    ? `${m.from_location_name} → ${m.to_location_name}`
+    : m.location_name}
+</TableCell>
 
-                <TableCell>{m.quantity}</TableCell>
-                <TableCell>{m.type}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+      <TableCell>{m.quantity}</TableCell>
+      <TableCell>{m.type}</TableCell>
+    </TableRow>
+  ))}
+</TableBody>
 
         </Table>
       </Box>

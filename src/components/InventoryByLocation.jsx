@@ -9,8 +9,11 @@ export default function InventoryByLocation() {
   const [filterLocation, setFilterLocation] = useState('');
 
   useEffect(() => {
-    loadLocations();
-    loadInventory();
+    const loadData = async () => {
+      await loadLocations();
+      await loadInventory();
+    };
+    loadData();
   }, []);
 
   // Cargar ubicaciones
@@ -24,6 +27,7 @@ export default function InventoryByLocation() {
     locs.forEach((l) => (map[l.id] = l.name));
     setLocations(locs);
     setLocationsMap(map);
+    return true;
   };
 
   // Cargar inventario considerando IN, OUT y MOVE
@@ -56,7 +60,7 @@ export default function InventoryByLocation() {
     const inventoryMap = {};
 
     rows.forEach((row) => {
-      const productName = row.batches?.products?.name ?? '—';
+      const productName = row.batches?.product?.name ?? '—';
       const batchId = row.batches?.id ?? '—';
       const expiration = row.batches?.expiration_date ?? '—';
 
