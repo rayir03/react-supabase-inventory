@@ -60,7 +60,7 @@ export default function InventoryByLocation() {
     const inventoryMap = {};
 
     rows.forEach((row) => {
-      const productName = row.batches?.product?.name ?? '—';
+      const productName = row.batches?.products?.name ?? '—';
       const batchId = row.batches?.id ?? '—';
       const expiration = row.batches?.expiration_date ?? '—';
 
