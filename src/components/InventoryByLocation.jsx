@@ -7,11 +7,13 @@ export default function InventoryByLocation() {
   const [locations, setLocations] = useState([]);
   const [locationsMap, setLocationsMap] = useState({});
   const [filterLocation, setFilterLocation] = useState('');
+  const [searchProduct, setSearchProduct] = useState('');
+  const [totalStockMap, setTotalStockMap] = useState({});
 
   useEffect(() => {
     const loadData = async () => {
-      await loadLocations();
-      await loadInventory();
+      const { map, locs} = await loadLocations();
+      await loadInventory(map);
     };
     loadData();
   }, []);
@@ -21,35 +23,30 @@ export default function InventoryByLocation() {
     const { data: locs, error } = await supabase.from('locations').select('*');
     if (error) {
       console.error(error);
-      return;
+      return { map: {}, locs: [] };
     }
     const map = {};
     locs.forEach((l) => (map[l.id] = l.name));
     setLocations(locs);
     setLocationsMap(map);
-    return true;
+    return { map, locs };
   };
 
-  // Cargar inventario considerando IN, OUT y MOVE
-  const loadInventory = async () => {
-    const { data: rows, error } = await supabase
-      .from('stock_movements')
-      .select(`
+  // Cargar inventario y calcular stock total por producto
+  const loadInventory = async (locMap) => {
+    const { data: rows, error } = await supabase.from('stock_movements').select(`
+      id,
+      quantity,
+      type,
+      location_id,
+      from_location_id,
+      to_location_id,
+      batches (
         id,
-        quantity,
-        type,
-        location_id,
-        from_location_id,
-        to_location_id,
-        batches (
-          id,
-          expiration_date,
-          products (
-            id,
-            name
-          )
-        )
-      `);
+        expiration_date,
+        products (id, name)
+      )
+    `);
 
     if (error) {
       console.error(error);
@@ -58,112 +55,117 @@ export default function InventoryByLocation() {
     }
 
     const inventoryMap = {};
+    const totalStockMap = {};
 
     rows.forEach((row) => {
       const productName = row.batches?.products?.name ?? '—';
       const batchId = row.batches?.id ?? '—';
       const expiration = row.batches?.expiration_date ?? '—';
 
-      // IN y OUT
-      if (row.type === 'IN' || row.type === 'OUT') {
-        const locId = row.location_id;
+      const initKey = (locId) => {
+        if (!locId) return null;
         const key = `${productName}_${batchId}_${locId}`;
         if (!inventoryMap[key]) {
           inventoryMap[key] = {
             name: productName,
             batch: batchId,
             expiration,
-            location: locationsMap[locId] || '—',
+            location: locMap[locId] || '—',
             stock_location: 0
           };
         }
-        inventoryMap[key].stock_location += row.type === 'IN' ? row.quantity : -row.quantity;
-      }
+        return key;
+      };
 
-      // MOVE
-      if (row.type === 'MOVE') {
-        // Restar del origen
-        if (row.from_location_id) {
-          const fromKey = `${productName}_${batchId}_${row.from_location_id}`;
-          if (!inventoryMap[fromKey]) {
-            inventoryMap[fromKey] = {
-              name: productName,
-              batch: batchId,
-              expiration,
-              location: locationsMap[row.from_location_id] || '—',
-              stock_location: 0
-            };
-          }
-          inventoryMap[fromKey].stock_location -= row.quantity;
-        }
-
-        // Sumar al destino
-        if (row.to_location_id) {
-          const toKey = `${productName}_${batchId}_${row.to_location_id}`;
-          if (!inventoryMap[toKey]) {
-            inventoryMap[toKey] = {
-              name: productName,
-              batch: batchId,
-              expiration,
-              location: locationsMap[row.to_location_id] || '—',
-              stock_location: 0
-            };
-          }
-          inventoryMap[toKey].stock_location += row.quantity;
-        }
+      if (row.type === 'IN') {
+        const key = initKey(row.location_id);
+        if (key) inventoryMap[key].stock_location += row.quantity;
+      } else if (row.type === 'OUT') {
+        const key = initKey(row.location_id);
+        if (key) inventoryMap[key].stock_location -= row.quantity;
+      } else if (row.type === 'MOVE') {
+        const fromKey = initKey(row.from_location_id);
+        const toKey = initKey(row.to_location_id);
+        if (fromKey) inventoryMap[fromKey].stock_location -= row.quantity;
+        if (toKey) inventoryMap[toKey].stock_location += row.quantity;
       }
     });
 
+    // Evitar negativos y calcular stock total
+    Object.values(inventoryMap).forEach((inv) => {
+      inv.stock_location = Math.max(inv.stock_location, 0); // no negativos
+      totalStockMap[inv.name] = (totalStockMap[inv.name] || 0) + inv.stock_location;
+    });
+
+    // Asegurarnos de que productos sin stock aparezcan como 0
+    Object.keys(totalStockMap).forEach((name) => {
+      if (totalStockMap[name] < 0) totalStockMap[name] = 0;
+    });
+
+    setTotalStockMap(totalStockMap);
     setData(Object.values(inventoryMap));
   };
 
-  // Filtrar por ubicación
-  const filteredData = filterLocation
-    ? data.filter((item) => item.location === filterLocation)
-    : data;
+  // Filtrar por ubicación y buscador
+  const filteredData = data.filter((item) => {
+    const matchesLocation = filterLocation ? item.location === filterLocation : true;
+    const matchesProduct = searchProduct
+      ? item.name.toLowerCase().includes(searchProduct.toLowerCase())
+      : true;
+    return matchesLocation && matchesProduct;
+  });
 
   return (
     <Paper sx={{ mt: 3, p: 2, overflowX: 'auto' }}>
-  <TextField
-    select
-    label="Filtrar por ubicación"
-    fullWidth
-    margin="dense"
-    value={filterLocation}
-    onChange={(e) => setFilterLocation(e.target.value)}
-  >
-    <MenuItem value="">Todas</MenuItem>
-    {locations.map((l) => (
-      <MenuItem key={l.id} value={l.name}>
-        {l.name}
-      </MenuItem>
-    ))}
-  </TextField>
+      <TextField
+        label="Buscar producto"
+        fullWidth
+        margin="dense"
+        value={searchProduct}
+        onChange={(e) => setSearchProduct(e.target.value)}
+      />
 
-  <Table sx={{ mt: 2, minWidth: 650 }}>
-    <TableHead>
-      <TableRow>
-        <TableCell>Producto</TableCell>
-        <TableCell>Lote</TableCell>
-        <TableCell>Caducidad</TableCell>
-        <TableCell>Ubicación</TableCell>
-        <TableCell>Cantidad</TableCell>
-      </TableRow>
-    </TableHead>
+      <TextField
+        select
+        label="Filtrar por ubicación"
+        fullWidth
+        margin="dense"
+        value={filterLocation}
+        onChange={(e) => setFilterLocation(e.target.value)}
+      >
+        <MenuItem value="">Todas</MenuItem>
+        {locations.map((l) => (
+          <MenuItem key={l.id} value={l.name}>
+            {l.name}
+          </MenuItem>
+        ))}
+      </TextField>
 
-    <TableBody>
-      {filteredData.map((r, i) => (
-        <TableRow key={i}>
-          <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.name}</TableCell>
-          <TableCell>{r.batch}</TableCell>
-          <TableCell>{r.expiration}</TableCell>
-          <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.location}</TableCell>
-          <TableCell>{r.stock_location}</TableCell>
-        </TableRow>
-      ))}
-    </TableBody>
-  </Table>
-</Paper>
+      <Table sx={{ mt: 2, minWidth: 700 }}>
+        <TableHead>
+          <TableRow>
+            <TableCell>Producto</TableCell>
+            <TableCell>Lote</TableCell>
+            <TableCell>Caducidad</TableCell>
+            <TableCell>Ubicación</TableCell>
+            <TableCell>Cantidad</TableCell>
+            <TableCell>Stock Total</TableCell>
+          </TableRow>
+        </TableHead>
 
+        <TableBody>
+          {filteredData.map((r, i) => (
+            <TableRow key={i}>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.name}</TableCell>
+              <TableCell>{r.batch}</TableCell>
+              <TableCell>{r.expiration}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.location}</TableCell>
+              <TableCell>{r.stock_location}</TableCell>
+              <TableCell>{totalStockMap[r.name]}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Paper>
   );
 }
