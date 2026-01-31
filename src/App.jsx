@@ -10,7 +10,7 @@ import StockMovements from './components/StockMovements';
 import InventoryByLocation from './components/InventoryByLocation';
 import PageTitle from './components/PageTitle';
 import { supabase } from "./supabaseClient";
-import BarcodeScanner from "./components/BarcodeScanner";
+import BarcodeScanner from "./components/BarcodeScanner.jsx";
 
 function App() {
   const [view, setView] = useState('products');
