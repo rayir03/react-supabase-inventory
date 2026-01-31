@@ -44,6 +44,7 @@ export default function InventoryByLocation() {
       batches (
         id,
         expiration_date,
+        total_quantity,
         products (id, name)
       )
     `);
@@ -61,6 +62,7 @@ export default function InventoryByLocation() {
       const productName = row.batches?.products?.name ?? '—';
       const batchId = row.batches?.id ?? '—';
       const expiration = row.batches?.expiration_date ?? '—';
+      
 
       const initKey = (locId) => {
         if (!locId) return null;
@@ -74,6 +76,7 @@ export default function InventoryByLocation() {
             stock_location: 0
           };
         }
+        
         return key;
       };
 
@@ -83,6 +86,7 @@ export default function InventoryByLocation() {
       } else if (row.type === 'OUT') {
         const key = initKey(row.location_id);
         if (key) inventoryMap[key].stock_location -= row.quantity;
+        
       } else if (row.type === 'MOVE') {
         const fromKey = initKey(row.from_location_id);
         const toKey = initKey(row.to_location_id);
