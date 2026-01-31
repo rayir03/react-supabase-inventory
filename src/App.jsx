@@ -16,6 +16,10 @@ function App() {
   const [view, setView] = useState('products');
   const [product, setProduct] = useState(null);
   const [scanned, setScanned] = useState(false);
+  const handleScan1 = async (code) => {
+  console.log("ESCANEADO:", code);
+};
+
 const handleScan = async (barcode) => {
   if (scanned) return;
   setScanned(true);
